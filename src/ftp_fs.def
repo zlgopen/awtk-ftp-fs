@@ -1,0 +1,5 @@
+LIBRARY   ftp_fs
+EXPORTS
+    ftp_fs_create
+    ftp_fs_destroy
+    ftp_fs_cast

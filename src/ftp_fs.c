@@ -476,6 +476,8 @@ static ret_t fs_ftp_file_close(fs_file_t *file) {
     fs_remove_file(os_fs(), ftp_file->temp_path);
   }
 
+  TKMEM_FREE(ftp_file);
+
   return RET_OK;
 }
 

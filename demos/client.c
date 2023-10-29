@@ -29,7 +29,6 @@ static void run_script(conf_doc_t* doc, uint32_t times) {
   conf_node_t* iter = conf_node_get_first_child(doc->root);
 
   while (iter != NULL) {
-    value_t v;
     const char* name = conf_node_get_name(iter);
 
     if (tk_str_eq(name, "create")) {
@@ -227,9 +226,12 @@ static void run_script(conf_doc_t* doc, uint32_t times) {
           while ((ret = fs_file_read(from_file, buff, sizeof(buff))) > 0) {
             fs_file_write(to_file, buff, ret);
           }
-          fs_file_close(to_file);
         }
         fs_file_close(from_file);
+      }
+      
+      if (to_file != NULL) {
+         fs_file_close(to_file);
       }
     } else if (tk_str_eq(name, "stat")) {
       fs_stat_info_t info;

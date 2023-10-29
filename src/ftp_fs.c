@@ -32,6 +32,8 @@
 #include "streams/inet/iostream_tcp.h"
 
 static ret_t ftp_fs_pasv(ftp_fs_t *ftp_fs);
+static ret_t ftp_fs_cmd(ftp_fs_t *ftp_fs, const char *cmd, int32_t *ret_code,
+                        char *ret_data, uint32_t ret_data_size);
 
 static ret_t ftp_fs_expect226(ftp_fs_t *ftp_fs) {
   char buf[1024] = {0};
@@ -48,9 +50,6 @@ static ret_t ftp_fs_expect226(ftp_fs_t *ftp_fs) {
 
   return RET_OK;
 }
-
-static ret_t ftp_fs_cmd(ftp_fs_t *ftp_fs, const char *cmd, int32_t *ret_code,
-                        char *ret_data, uint32_t ret_data_size);
 
 static ret_t ftp_fs_read_data(ftp_fs_t *ftp_fs, wbuffer_t *wb) {
   int32_t ret = 0;

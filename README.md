@@ -44,5 +44,5 @@ scons LINUX_FB=true
 
 ## 4. 相关项目
 
-* [嵌入式 WEB 服务器  awtk-restful-httpd](https://github.com/zlgopen/awtk-restful-httpd)
-* [嵌入式 FTP 服务器  awtk-restful-httpd](https://github.com/zlgopen/awtk-ftpd)
+* [嵌入式 WEB 服务器 awtk-restful-httpd](https://github.com/zlgopen/awtk-restful-httpd)
+* [嵌入式 FTP 服务器 awtk-ftpd](https://github.com/zlgopen/awtk-ftpd)

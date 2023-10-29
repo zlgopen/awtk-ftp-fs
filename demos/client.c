@@ -157,17 +157,41 @@ static void run_script(conf_doc_t* doc, uint32_t times) {
       }
     } else if (tk_str_eq(name, "dir_list")) {
       const char* name = conf_node_get_child_value_str(iter, "name", NULL);
+      const char* expected_items = conf_node_get_child_value_str(iter, "items", NULL);
       fs_dir_t* dir = fs_open_dir(fs, name);
       if (dir != NULL) {
+        str_t str;
         fs_item_t item;
+        str_init(&str, 10000);
+
         while (fs_dir_read(dir, &item) == RET_OK) {
-          log_debug("%s: %s\n", item.is_dir ? "dir " : "file", item.name);
+          str_append_format(&str, 1024, "{%s:%s};", item.is_dir ? "dir" : "file", item.name);
         }
+
+        if (expected_items != NULL) {
+          if (!tk_str_eq(expected_items, str.str)) {
+            log_debug("dir_list failed: %s.\n", name);
+          }
+        } else {
+          log_debug("%s\n", str.str);
+        }
+        str_reset(&str);
         fs_dir_close(dir);
+      } else {
+        log_debug("dir_list failed: %s.\n", name);
+      }
+    } else if (tk_str_eq(name, "remove_local_file")) {
+      const char* name = conf_node_get_child_value_str(iter, "name", NULL);
+      if (fs_remove_file(os_fs(), name) == RET_OK) {
+        log_debug("remove %s.\n", name);
+      } else {
+        log_debug("remove %s fail.\n", name);
       }
     } else if (tk_str_eq(name, "download")) {
       const char* remote = conf_node_get_child_value_str(iter, "remote", NULL);
       const char* local = conf_node_get_child_value_str(iter, "local", NULL);
+      int32_t expected_size = conf_node_get_child_value_int32(iter, "size", -1);
+
       fs_file_t* from_file = fs_open_file(fs, remote, "rb");
       fs_file_t* to_file = fs_open_file(os_fs(), local, "wb+");
       if (from_file != NULL) {
@@ -180,6 +204,16 @@ static void run_script(conf_doc_t* doc, uint32_t times) {
           fs_file_close(to_file);
         }
         fs_file_close(from_file);
+        
+        if(expected_size >= 0) {
+          if(file_get_size(local) != expected_size) {
+            log_debug("download %s failed\n", remote);
+          } else {
+            log_debug("download %s => %s\n", remote, local);
+          }
+        } else {
+          log_debug("download %s => %s\n", remote, local);
+        }
       }
     } else if (tk_str_eq(name, "upload")) {
       const char* remote = conf_node_get_child_value_str(iter, "remote", NULL);

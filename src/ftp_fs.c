@@ -47,8 +47,6 @@ static ret_t ftp_fs_expect226(ftp_fs_t *ftp_fs) {
   } else {
     return RET_FAIL;
   }
-
-  return RET_OK;
 }
 
 static ret_t ftp_fs_read_data(ftp_fs_t *ftp_fs, wbuffer_t *wb) {
@@ -117,7 +115,7 @@ static ret_t ftp_fs_cmd_list(ftp_fs_t *ftp_fs, const char *path,
   return_value_if_fail(fs_change_dir((fs_t *)ftp_fs, path) == RET_OK, RET_FAIL);
   return_value_if_fail(ftp_fs_pasv(ftp_fs) == RET_OK, RET_FAIL);
 
-  snprintf(cmd, sizeof(cmd), "MLSD %s\r\n", path);
+  tk_snprintf(cmd, sizeof(cmd), "MLSD %s\r\n", path);
   ret = ftp_fs_cmd(ftp_fs, cmd, NULL, buf, sizeof(buf));
   return_value_if_fail(ret == RET_OK, ret);
 
@@ -169,18 +167,16 @@ static ret_t ftp_fs_cmd(ftp_fs_t *ftp_fs, const char *cmd, int32_t *ret_code,
   } else {
     return RET_FAIL;
   }
-
-  return RET_OK;
 }
 
 static ret_t ftp_fs_login(ftp_fs_t *ftp_fs) {
   char cmd[1024] = {0};
   ret_t ret = RET_FAIL;
-  snprintf(cmd, sizeof(cmd), "USER %s\r\n", ftp_fs->user);
+  tk_snprintf(cmd, sizeof(cmd), "USER %s\r\n", ftp_fs->user);
   ret = ftp_fs_cmd(ftp_fs, cmd, NULL, NULL, 0);
   return_value_if_fail(ret == RET_OK, ret);
 
-  snprintf(cmd, sizeof(cmd), "PASS %s\r\n", ftp_fs->password);
+  tk_snprintf(cmd, sizeof(cmd), "PASS %s\r\n", ftp_fs->password);
   ret = ftp_fs_cmd(ftp_fs, cmd, NULL, NULL, 0);
   return_value_if_fail(ret == RET_OK, ret);
 
@@ -204,18 +200,18 @@ static ret_t ftp_fs_pasv(ftp_fs_t *ftp_fs) {
     ftp_fs->data_ios = NULL;
   }
 
-  snprintf(cmd, sizeof(cmd), "PASV %s\r\n", ftp_fs->user);
+  tk_snprintf(cmd, sizeof(cmd), "PASV %s\r\n", ftp_fs->user);
   ret = ftp_fs_cmd(ftp_fs, cmd, NULL, buf, sizeof(buf));
   return_value_if_fail(ret == RET_OK, ret);
 
   p = strchr(buf, '(');
   return_value_if_fail(p != NULL, RET_FAIL);
 
-  if (sscanf(p, "(%d,%d,%d,%d,%d,%d)", &ip0, &ip1, &ip2, &ip3, &port_hi,
+  if (tk_sscanf(p, "(%d,%d,%d,%d,%d,%d)", &ip0, &ip1, &ip2, &ip3, &port_hi,
              &port_lo) == 6) {
     char ip[128] = {0};
     ftp_fs->data_port = port_hi * 256 + port_lo;
-    snprintf(ip, sizeof(ip), "%d.%d.%d.%d", ip0, ip1, ip2, ip3);
+    tk_snprintf(ip, sizeof(ip), "%d.%d.%d.%d", ip0, ip1, ip2, ip3);
     ftp_fs->data_ios = tk_iostream_tcp_create_client(ip, ftp_fs->data_port);
     return_value_if_fail(ftp_fs->data_ios != NULL, RET_IO);
 
@@ -232,7 +228,7 @@ static ret_t ftp_fs_cmd_get_size(ftp_fs_t *ftp_fs, const char *filename,
   char buf[1024] = {0};
   return_value_if_fail(filename != NULL && size != NULL, RET_BAD_PARAMS);
 
-  snprintf(cmd, sizeof(cmd), "SIZE %s\r\n", filename);
+  tk_snprintf(cmd, sizeof(cmd), "SIZE %s\r\n", filename);
   ret = ftp_fs_cmd(ftp_fs, cmd, NULL, buf, sizeof(buf));
   return_value_if_fail(ret == RET_OK, ret);
 
@@ -249,7 +245,7 @@ static ret_t ftp_fs_cmd_stat(ftp_fs_t *ftp_fs, const char *filename,
   tokenizer_t t;
   return_value_if_fail(filename != NULL && fst != NULL, RET_BAD_PARAMS);
 
-  snprintf(cmd, sizeof(cmd), "XSTAT %s\r\n", filename);
+  tk_snprintf(cmd, sizeof(cmd), "XSTAT %s\r\n", filename);
   ret = ftp_fs_cmd(ftp_fs, cmd, NULL, buf, sizeof(buf));
   if (ret != RET_OK) {
     return ret;
@@ -281,7 +277,7 @@ static ret_t ftp_fs_cmd_get_pwd(ftp_fs_t *ftp_fs, char *path,
   const char *pend = NULL;
   return_value_if_fail(path != NULL && path_size > 0, RET_BAD_PARAMS);
 
-  snprintf(cmd, sizeof(cmd), "PWD\r\n");
+  tk_snprintf(cmd, sizeof(cmd), "PWD\r\n");
   ret = ftp_fs_cmd(ftp_fs, cmd, NULL, buf, sizeof(buf));
   return_value_if_fail(ret == RET_OK, ret);
 
@@ -319,7 +315,7 @@ static ret_t ftp_fs_cmd_download_file(ftp_fs_t *ftp_fs,
                        RET_BAD_PARAMS);
 
   goto_error_if_fail(ftp_fs_pasv(ftp_fs) == RET_OK);
-  snprintf(cmd, sizeof(cmd), "RETR %s\r\n", remote_filename);
+  tk_snprintf(cmd, sizeof(cmd), "RETR %s\r\n", remote_filename);
 
   if (ftp_fs_cmd(ftp_fs, cmd, NULL, NULL, 0) == RET_OK) {
     file = fs_open_file(os_fs(), local_filename, "wb+");
@@ -357,7 +353,7 @@ static ret_t ftp_fs_cmd_upload_file(ftp_fs_t *ftp_fs,
   return_value_if_fail(file != NULL, RET_FAIL);
 
   goto_error_if_fail(ftp_fs_pasv(ftp_fs) == RET_OK);
-  snprintf(cmd, sizeof(cmd), "STOR %s\r\n", remote_filename);
+  tk_snprintf(cmd, sizeof(cmd), "STOR %s\r\n", remote_filename);
   goto_error_if_fail(ftp_fs_cmd(ftp_fs, cmd, NULL, NULL, 0) == RET_OK);
 
   while ((ret = fs_file_read(file, buf, sizeof(buf))) > 0) {

@@ -74,14 +74,62 @@ static ret_t ftp_fs_read_data(ftp_fs_t* ftp_fs, wbuffer_t* wb) {
   return ftp_fs_expect226(ftp_fs);
 }
 
-static fs_item_t* fs_item_parse(const char* line) {
+typedef enum _ftp_list_method_t { FTP_LIST_METHOD_MLSD, FTP_LIST_METHOD_LIST } ftp_list_method_t;
+
+//-rw-r--r-- 1 501 20          785 Oct 26 08:25 README.md
+static fs_item_t* fs_item_parse_list(fs_item_t* item, const char* line) {
+  tokenizer_t t;
+  const char* p = NULL;
+  return_value_if_fail(item != NULL, NULL);
+
+  tokenizer_init(&t, line, tk_strlen(line), " ");
+  return_value_if_fail(line != NULL && *line != '\0', NULL);
+
+  p = tokenizer_next(&t);
+  return_value_if_fail(p != NULL, item);
+
+  item->is_dir = p[0] == 'd';
+  item->is_reg_file = p[0] == '-';
+  item->is_link = p[0] == 'l';
+
+  p = tokenizer_next(&t); // 1
+  return_value_if_fail(p != NULL, item);
+
+  p = tokenizer_next(&t); // 501
+  return_value_if_fail(p != NULL, item);
+
+  p = tokenizer_next(&t); // 20
+  return_value_if_fail(p != NULL, item);
+
+  p = tokenizer_next(&t); // 785
+  return_value_if_fail(p != NULL, item);
+
+  p = tokenizer_next(&t); // Oct
+  return_value_if_fail(p != NULL, item);
+
+  p = tokenizer_next(&t); // 26
+  return_value_if_fail(p != NULL, item);
+
+  p = tokenizer_next(&t); // 08:25
+  return_value_if_fail(p != NULL, item);
+
+  p = tokenizer_next(&t); // README.md
+  return_value_if_fail(p != NULL, item);
+
+  tk_strncpy(item->name, p, sizeof(item->name)-1);
+
+  tokenizer_deinit(&t);
+
+  return item;
+}
+
+static fs_item_t* fs_item_parse_mlsd(fs_item_t* item, const char* line) {
   tokenizer_t t;
   char skey[128] = {0};
   char svalue[128] = {0};
-  fs_item_t* item = NULL;
-  return_value_if_fail(line != NULL && *line != '\0', NULL);
-  item = fs_item_create();
+  
   return_value_if_fail(item != NULL, NULL);
+  return_value_if_fail(line != NULL && *line != '\0', NULL);
 
   tokenizer_init(&t, line, strlen(line), ";");
   while (tokenizer_has_more(&t)) {
@@ -118,12 +166,19 @@ static ret_t ftp_fs_cmd_list(ftp_fs_t* ftp_fs, const char* path, darray_t* items
   char cmd[1024] = {0};
   ret_t ret = RET_FAIL;
   char buf[1024] = {0};
+  ftp_list_method_t method = FTP_LIST_METHOD_MLSD;
+
   return_value_if_fail(path != NULL && items != NULL, RET_BAD_PARAMS);
   return_value_if_fail(fs_change_dir((fs_t*)ftp_fs, path) == RET_OK, RET_FAIL);
   return_value_if_fail(ftp_fs_pasv(ftp_fs) == RET_OK, RET_FAIL);
 
   tk_snprintf(cmd, sizeof(cmd), "MLSD %s\r\n", path);
   ret = ftp_fs_cmd(ftp_fs, cmd, NULL, buf, sizeof(buf) - 1);
+  if (ret != RET_OK) {
+    tk_snprintf(cmd, sizeof(cmd), "LIST %s\r\n", path);
+    ret = ftp_fs_cmd(ftp_fs, cmd, NULL, buf, sizeof(buf) - 1);
+    method = FTP_LIST_METHOD_LIST;
+  }
   return_value_if_fail(ret == RET_OK, ret);
 
   wbuffer_init_extendable(&wb);
@@ -133,7 +188,19 @@ static ret_t ftp_fs_cmd_list(ftp_fs_t* ftp_fs, const char* path, darray_t* items
     while (tokenizer_has_more(&t)) {
       const char* line = tokenizer_next(&t);
       if (line != NULL) {
-        fs_item_t* item = fs_item_parse(line);
+        fs_item_t* item = fs_item_create();
+        break_if_fail(item != NULL);
+        
+        switch(method) {
+          case FTP_LIST_METHOD_MLSD:
+            item = fs_item_parse_mlsd(item, line);
+            break;
+          case FTP_LIST_METHOD_LIST:
+            item = fs_item_parse_list(item, line);
+            break;
+          default: 
+            break;
+        }
         if (item != NULL) {
           darray_push(items, item);
         }
@@ -163,7 +230,7 @@ static ret_t ftp_fs_read_until_end(ftp_fs_t* ftp_fs, char* buf, int32_t buf_len,
     len = tk_iostream_read(ftp_fs->ios, buf + offset, available_len);
 
     if (len <= 0) {
-      log_warn("read failed\n"); 
+      log_warn("read failed\n");
       break;
     } else {
       buf[offset + len] = '\0';
@@ -310,7 +377,7 @@ static ret_t ftp_fs_cmd_stat(ftp_fs_t* ftp_fs, const char* filename, fs_stat_inf
   }
 
   p = strstr(buf, "\r\n");
-  if (p != NULL) {
+  if (p != NULL && p[2]) {
     p += strlen("\r\n");
     // p = 213-Status of \"/test.bin\":\r\n-rw-r--r--   1 jim      staff        1650 Oct 25 13:12 test.bin\r\n213 End of status.\r\n
     tokenizer_init(&t, p, strlen(p), " ");

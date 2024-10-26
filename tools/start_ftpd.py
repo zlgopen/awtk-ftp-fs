@@ -5,7 +5,7 @@ from pyftpdlib.servers import FTPServer
 def main():
     # 创建一个虚拟用户授权类
     authorizer = DummyAuthorizer()
-    ftp_root = "/Users/jim/work/awtk-root/awtk-ftpd"
+    ftp_root = "./"
 
     # 添加用户权限
     authorizer.add_user("admin", "admin", ftp_root, perm="elradfmw")

@@ -15,7 +15,7 @@ pip install pyftpdlib
 * 运行
 
 ```
-python3.11 start_ftpd.py
+python3 start_ftpd.py
 ```
 
 

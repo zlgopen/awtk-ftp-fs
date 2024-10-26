@@ -35,15 +35,24 @@ BEGIN_C_DECLS
 typedef struct _ftp_fs_t {
   fs_t fs;
 
-  /*private*/
-  char *user;
-  char *host;
-  char *password;
-  tk_iostream_t *ios;
-  tk_iostream_t *data_ios;
-  int data_port;
+  /**
+   * @property {int} last_error_code
+   * 最后一次错误码。
+   */
   int last_error_code;
+  /**
+   * @property {char} last_error_message[256]
+   * 最后一次错误信息。
+   */
   char last_error_message[256];
+
+  /*private*/
+  char* user;
+  char* host;
+  char* password;
+  tk_iostream_t* ios;
+  tk_iostream_t* data_ios;
+  int data_port;
   const char* stat_cmd;
 } ftp_fs_t;
 
@@ -57,8 +66,29 @@ typedef struct _ftp_fs_t {
  *
  * @return {fs_t*} 返回ftp文件系统对象。
  */
-fs_t *ftp_fs_create(const char *host, uint32_t port, const char *user,
-                    const char *password);
+fs_t* ftp_fs_create(const char* host, uint32_t port, const char* user, const char* password);
+
+/**
+ * @method ftp_fs_download_file
+ * 下载文件。
+ * @param {fs_t*} fs ftp文件系统对象。
+ * @param {const char*} remote_filename 远程文件名。
+ * @param {const char*} local_filename 本地文件名。
+ *
+ * @return {ret_t} 返回RET_OK表示成功，否则表示失败。
+ */ 
+ret_t ftp_fs_download_file(fs_t* fs, const char* remote_filename, const char* local_filename);
+
+/**
+ * @method ftp_fs_upload_file
+ * 上传文件。
+ * @param {fs_t*} fs ftp文件系统对象。
+ * @param {const char*} local_filename 本地文件名。
+ * @param {const char*} remote_filename 远程文件名。
+ *
+ * @return {ret_t} 返回RET_OK表示成功，否则表示失败。
+ */
+ret_t ftp_fs_upload_file(fs_t* fs, const char* local_filename, const char* remote_filename);
 
 /**
  * @method ftp_fs_destroy
@@ -67,7 +97,7 @@ fs_t *ftp_fs_create(const char *host, uint32_t port, const char *user,
  *
  * @return {ret_t} 返回RET_OK表示成功，否则表示失败。
  */
-ret_t ftp_fs_destroy(fs_t *fs);
+ret_t ftp_fs_destroy(fs_t* fs);
 
 /**
  * @method ftp_fs_cast
@@ -76,7 +106,7 @@ ret_t ftp_fs_destroy(fs_t *fs);
  *
  * @return {ftp_fs_t*} 返回ftp文件系统对象。
  */
-ftp_fs_t *ftp_fs_cast(fs_t *fs);
+ftp_fs_t* ftp_fs_cast(fs_t* fs);
 
 #define FTP_FS(fs) ftp_fs_cast(fs)
 

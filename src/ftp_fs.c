@@ -163,7 +163,7 @@ static ret_t ftp_fs_cmd(ftp_fs_t* ftp_fs, const char* cmd, int32_t* ret_code, ch
   }
 
   if (strstr(buf, "213-Status") != NULL && strstr(buf, "End of status") == NULL) {
-    while(strstr(buf, "End of status") == NULL) {
+    while (strstr(buf, "End of status") == NULL) {
       len = tk_strlen(buf);
       len += tk_iostream_read(ftp_fs->ios, buf + len, sizeof(buf) - len);
     }
@@ -183,7 +183,7 @@ static ret_t ftp_fs_cmd(ftp_fs_t* ftp_fs, const char* cmd, int32_t* ret_code, ch
   } else {
     log_debug("%s\n", buf);
     ftp_fs->last_error_code = ret;
-    tk_strncpy(ftp_fs->last_error_message, buf, sizeof(ftp_fs->last_error_message)-1);
+    tk_strncpy(ftp_fs->last_error_message, buf, sizeof(ftp_fs->last_error_message) - 1);
     return RET_FAIL;
   }
 }
@@ -295,13 +295,13 @@ static ret_t ftp_fs_cmd_stat(ftp_fs_t* ftp_fs, const char* filename, fs_stat_inf
       } else {
         fst->is_reg_file = p[0] == '-';
         fst->is_dir = p[0] == 'd';
-        p = tokenizer_next(&t);                // 1
-        p = tokenizer_next(&t);                // jim
-        p = tokenizer_next(&t);                // staff
+        p = tokenizer_next(&t);                   // 1
+        p = tokenizer_next(&t);                   // jim
+        p = tokenizer_next(&t);                   // staff
         fst->size = tokenizer_next_int64(&t, 0);  // 1650
-        p = tokenizer_next(&t);                // Oct
-        p = tokenizer_next(&t);                // 25
-        p = tokenizer_next(&t);                // 13:12
+        p = tokenizer_next(&t);                   // Oct
+        p = tokenizer_next(&t);                   // 25
+        p = tokenizer_next(&t);                   // 13:12
       }
     }
     tokenizer_deinit(&t);
@@ -389,6 +389,14 @@ error:
   return RET_OK;
 }
 
+ret_t ftp_fs_download_file(fs_t* fs, const char* remote_filename, const char* local_filename) {
+  ftp_fs_t* ftp_fs = FTP_FS(fs);
+  return_value_if_fail(ftp_fs != NULL, RET_BAD_PARAMS);
+  return_value_if_fail(remote_filename != NULL && local_filename != NULL, RET_BAD_PARAMS);
+
+  return ftp_fs_cmd_download_file(ftp_fs, remote_filename, local_filename);
+}
+
 static ret_t ftp_fs_cmd_upload_file(ftp_fs_t* ftp_fs, const char* local_filename,
                                     const char* remote_filename) {
   int ret = 0;
@@ -418,6 +426,14 @@ error:
   TK_OBJECT_UNREF(ftp_fs->data_ios);
 
   return RET_FAIL;
+}
+
+ret_t ftp_fs_upload_file(fs_t* fs, const char* local_filename, const char* remote_filename) {
+  ftp_fs_t* ftp_fs = FTP_FS(fs);
+  return_value_if_fail(ftp_fs != NULL, RET_BAD_PARAMS);
+  return_value_if_fail(remote_filename != NULL && local_filename != NULL, RET_BAD_PARAMS);
+
+  return ftp_fs_cmd_upload_file(ftp_fs, local_filename, remote_filename);
 }
 
 static int32_t fs_ftp_file_read(fs_file_t* file, void* buffer, uint32_t size) {
@@ -784,7 +800,7 @@ fs_t* ftp_fs_create(const char* host, uint32_t port, const char* user, const cha
   /*welcome message*/
   tk_iostream_read(ftp_fs->ios, buf, sizeof(buf));
   log_debug("%s", buf);
-  
+
   ftp_fs->stat_cmd = ftp_fs_get_stat_cmd_from_welcome(buf);
   goto_error_if_fail(ftp_fs_login(ftp_fs) == RET_OK);
 

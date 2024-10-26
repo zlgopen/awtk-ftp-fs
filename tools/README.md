@@ -38,9 +38,26 @@ sudo apt install vsftpd
 listen_port=2121
 ```
 
-
 * 启动服务
 
 ````
 sudo systemctl restart vsftpd
+```
+
+## 3. nodejs 提供的  ftp 服务器
+
+* 安装
+
+```
+npm install -g ftp-srv
+```
+
+* 修改配置
+
+编辑 start_ftpd.js， 根据需要修改 ftp_root 和 port，默认端口为 2121。
+
+* 运行
+
+```
+node start_ftpd.js
 ```

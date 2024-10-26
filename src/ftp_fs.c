@@ -37,7 +37,7 @@ static ret_t ftp_fs_cmd(ftp_fs_t* ftp_fs, const char* cmd, int32_t* ret_code, ch
 
 static ret_t ftp_fs_expect226(ftp_fs_t* ftp_fs) {
   char buf[1024] = {0};
-  int32_t ret = tk_iostream_read(ftp_fs->ios, buf, sizeof(buf)-1);
+  int32_t ret = tk_iostream_read(ftp_fs->ios, buf, sizeof(buf) - 1);
   return_value_if_fail(ret > 0, RET_IO);
 
   buf[ret] = '\0';
@@ -62,7 +62,7 @@ static ret_t ftp_fs_read_data(ftp_fs_t* ftp_fs, wbuffer_t* wb) {
   char buf[1024] = {0};
   return_value_if_fail(ftp_fs != NULL && wb != NULL, RET_BAD_PARAMS);
 
-  while ((ret = tk_iostream_read(ftp_fs->data_ios, buf, sizeof(buf)-1)) > 0) {
+  while ((ret = tk_iostream_read(ftp_fs->data_ios, buf, sizeof(buf) - 1)) > 0) {
     if (wbuffer_write_binary(wb, buf, ret) != RET_OK) {
       TK_OBJECT_UNREF(ftp_fs->data_ios);
       return RET_OOM;
@@ -123,7 +123,7 @@ static ret_t ftp_fs_cmd_list(ftp_fs_t* ftp_fs, const char* path, darray_t* items
   return_value_if_fail(ftp_fs_pasv(ftp_fs) == RET_OK, RET_FAIL);
 
   tk_snprintf(cmd, sizeof(cmd), "MLSD %s\r\n", path);
-  ret = ftp_fs_cmd(ftp_fs, cmd, NULL, buf, sizeof(buf)-1);
+  ret = ftp_fs_cmd(ftp_fs, cmd, NULL, buf, sizeof(buf) - 1);
   return_value_if_fail(ret == RET_OK, ret);
 
   wbuffer_init_extendable(&wb);
@@ -146,14 +146,41 @@ static ret_t ftp_fs_cmd_list(ftp_fs_t* ftp_fs, const char* path, darray_t* items
   return RET_OK;
 }
 
+static ret_t ftp_fs_read_until_end(ftp_fs_t* ftp_fs, char* buf, int32_t buf_len,
+                                   const char* end_mark) {
+  int32_t len = 0;
+  int32_t offset = 0;
+  int32_t available_len = buf_len;
+
+  while (strstr(buf, end_mark) == NULL) {
+    offset = tk_strlen(buf);
+    available_len = buf_len - offset;
+    if (available_len <= 0) {
+      log_warn("buf is full\n");
+      break;
+    }
+
+    len = tk_iostream_read(ftp_fs->ios, buf + offset, available_len);
+
+    if (len <= 0) {
+      log_warn("read failed\n"); 
+      break;
+    } else {
+      buf[offset + len] = '\0';
+    }
+  }
+
+  return RET_OK;
+}
+
 static ret_t ftp_fs_cmd(ftp_fs_t* ftp_fs, const char* cmd, int32_t* ret_code, char* ret_data,
                         uint32_t ret_data_size) {
-  char buf[1024] = {0};
+  char buf[2048] = {0};
   int32_t len = strlen(cmd);
   int32_t ret = tk_iostream_write(ftp_fs->ios, cmd, len);
   return_value_if_fail(ret == len, RET_IO);
 
-  ret = tk_iostream_read(ftp_fs->ios, buf, sizeof(buf)-1);
+  ret = tk_iostream_read(ftp_fs->ios, buf, sizeof(buf) - 1);
   return_value_if_fail(ret > 0, RET_IO);
 
   buf[ret] = '\0';
@@ -162,11 +189,12 @@ static ret_t ftp_fs_cmd(ftp_fs_t* ftp_fs, const char* cmd, int32_t* ret_code, ch
     *ret_code = ret;
   }
 
-  if (strstr(buf, "213-Status") != NULL && strstr(buf, "End of status") == NULL) {
-    while (strstr(buf, "End of status") == NULL) {
-      len = tk_strlen(buf);
-      len += tk_iostream_read(ftp_fs->ios, buf + len, sizeof(buf)-1 - len);
-    }
+  if (tk_str_start_with(buf, "213-Status of")) {
+    ftp_fs_read_until_end(ftp_fs, buf, sizeof(buf) - 1, "213 End of status");
+  } else if (tk_str_start_with(buf, "213-Status begin")) {
+    ftp_fs_read_until_end(ftp_fs, buf, sizeof(buf) - 1, "213 Status end");
+  } else if (tk_str_start_with(buf, "212-Status begin")) {
+    ftp_fs_read_until_end(ftp_fs, buf, sizeof(buf) - 1, "212 Status end");
   }
 
   if (ret_data != NULL && ret_data_size > 0) {
@@ -221,7 +249,7 @@ static ret_t ftp_fs_pasv(ftp_fs_t* ftp_fs) {
   }
 
   tk_snprintf(cmd, sizeof(cmd), "PASV\r\n");
-  ret = ftp_fs_cmd(ftp_fs, cmd, NULL, buf, sizeof(buf)-1);
+  ret = ftp_fs_cmd(ftp_fs, cmd, NULL, buf, sizeof(buf) - 1);
   return_value_if_fail(ret == RET_OK, ret);
 
   p = strchr(buf, '(');
@@ -247,7 +275,7 @@ static ret_t ftp_fs_cmd_get_size(ftp_fs_t* ftp_fs, const char* filename, int32_t
   return_value_if_fail(filename != NULL && size != NULL, RET_BAD_PARAMS);
 
   tk_snprintf(cmd, sizeof(cmd), "SIZE %s\r\n", filename);
-  ret = ftp_fs_cmd(ftp_fs, cmd, NULL, buf, sizeof(buf)-1);
+  ret = ftp_fs_cmd(ftp_fs, cmd, NULL, buf, sizeof(buf) - 1);
   return_value_if_fail(ret == RET_OK, ret);
 
   *size = tk_atoi(buf);
@@ -267,23 +295,23 @@ static ret_t ftp_fs_cmd_stat(ftp_fs_t* ftp_fs, const char* filename, fs_stat_inf
 
   if (ftp_fs->stat_cmd != NULL) {
     tk_snprintf(cmd, sizeof(cmd), "%s %s\r\n", ftp_fs->stat_cmd, filename);
-    ret = ftp_fs_cmd(ftp_fs, cmd, NULL, buf, sizeof(buf)-1);
+    ret = ftp_fs_cmd(ftp_fs, cmd, NULL, buf, sizeof(buf) - 1);
   } else {
     tk_snprintf(cmd, sizeof(cmd), "XSTAT %s\r\n", filename);
-    ret = ftp_fs_cmd(ftp_fs, cmd, NULL, buf, sizeof(buf)-1);
+    ret = ftp_fs_cmd(ftp_fs, cmd, NULL, buf, sizeof(buf) - 1);
     if (ret != RET_OK) {
-      if (ftp_fs->last_error_code == 500) {
+      if (ftp_fs->last_error_code == 500 || ftp_fs->last_error_code == 502) {
         tk_snprintf(cmd, sizeof(cmd), "STAT %s\r\n", filename);
-        ret = ftp_fs_cmd(ftp_fs, cmd, NULL, buf, sizeof(buf)-1);
+        ret = ftp_fs_cmd(ftp_fs, cmd, NULL, buf, sizeof(buf) - 1);
       } else {
         return ret;
       }
     }
   }
 
-  p = strstr(buf, ":\r\n");
+  p = strstr(buf, "\r\n");
   if (p != NULL) {
-    p += strlen(":\r\n");
+    p += strlen("\r\n");
     // p = 213-Status of \"/test.bin\":\r\n-rw-r--r--   1 jim      staff        1650 Oct 25 13:12 test.bin\r\n213 End of status.\r\n
     tokenizer_init(&t, p, strlen(p), " ");
     if (tokenizer_has_more(&t)) {
@@ -330,7 +358,7 @@ static ret_t ftp_fs_cmd_get_pwd(ftp_fs_t* ftp_fs, char* path, uint32_t path_size
   return_value_if_fail(path != NULL && path_size > 0, RET_BAD_PARAMS);
 
   tk_snprintf(cmd, sizeof(cmd), "PWD\r\n");
-  ret = ftp_fs_cmd(ftp_fs, cmd, NULL, buf, sizeof(buf)-1);
+  ret = ftp_fs_cmd(ftp_fs, cmd, NULL, buf, sizeof(buf) - 1);
   return_value_if_fail(ret == RET_OK, ret);
 
   p = strchr(buf, '"');
@@ -370,7 +398,7 @@ static ret_t ftp_fs_cmd_download_file(ftp_fs_t* ftp_fs, const char* remote_filen
   if (ftp_fs_cmd(ftp_fs, cmd, NULL, NULL, 0) == RET_OK) {
     file = fs_open_file(os_fs(), local_filename, "wb+");
     if (file != NULL) {
-      while ((ret = tk_iostream_read(ftp_fs->data_ios, buf, sizeof(buf)-1)) > 0) {
+      while ((ret = tk_iostream_read(ftp_fs->data_ios, buf, sizeof(buf) - 1)) > 0) {
         break_if_fail(fs_file_write(file, buf, ret) == ret);
       }
       fs_file_close(file);
@@ -412,7 +440,7 @@ static ret_t ftp_fs_cmd_upload_file(ftp_fs_t* ftp_fs, const char* local_filename
   tk_snprintf(cmd, sizeof(cmd), "STOR %s\r\n", remote_filename);
   goto_error_if_fail(ftp_fs_cmd(ftp_fs, cmd, NULL, NULL, 0) == RET_OK);
 
-  while ((ret = fs_file_read(file, buf, sizeof(buf)-1)) > 0) {
+  while ((ret = fs_file_read(file, buf, sizeof(buf) - 1)) > 0) {
     break_if_fail(tk_iostream_write_len(ftp_fs->data_ios, buf, ret, 2000) == ret);
   }
 
@@ -797,7 +825,7 @@ fs_t* ftp_fs_create(const char* host, uint32_t port, const char* user, const cha
   goto_error_if_fail(ftp_fs->ios != NULL);
 
   /*welcome message*/
-  tk_iostream_read(ftp_fs->ios, buf, sizeof(buf)-1);
+  tk_iostream_read(ftp_fs->ios, buf, sizeof(buf) - 1);
   log_debug("%s", buf);
 
   ftp_fs->stat_cmd = ftp_fs_get_stat_cmd_from_welcome(buf);

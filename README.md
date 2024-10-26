@@ -4,8 +4,6 @@
 
 将 FTP 服务封装成 AWTK 文件系统，通过文件系统的方式访问 FTP 服务器。
 
-由于其中使用了 XSTAT 扩展命令，目前只能和 [AWTK-FTPD](https://github.com/zlgopen/awtk-ftpd.git) 配合使用。
-
 ## 2 准备
 
 ### 2.1 获取 awtk 并编译
@@ -42,7 +40,11 @@ scons LINUX_FB=true
 ./bin/ftp_cli data/download.ini
 ```
 
-## 4. 相关项目
+## 4. 示例
+
+请参考 demos
+
+## 5. 相关项目
 
 * [嵌入式 WEB 服务器 awtk-restful-httpd](https://github.com/zlgopen/awtk-restful-httpd)
 * [嵌入式 FTP 服务器 awtk-ftpd](https://github.com/zlgopen/awtk-ftpd)

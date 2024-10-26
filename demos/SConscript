@@ -4,3 +4,5 @@ env=DefaultEnvironment().Clone()
 BIN_DIR=os.environ['BIN_DIR'];
 
 env.Program(os.path.join(BIN_DIR, 'ftp_cli'), Glob('client.c'))
+env.Program(os.path.join(BIN_DIR, 'ftp_download'), Glob('download.c'))
+env.Program(os.path.join(BIN_DIR, 'ftp_upload'), Glob('upload.c'))

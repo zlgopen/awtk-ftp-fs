@@ -177,8 +177,13 @@ static ret_t ftp_fs_cmd(ftp_fs_t* ftp_fs, const char* cmd, int32_t* ret_code, ch
   }
 
   if (ret >= 100 && ret < 400) {
+    ftp_fs->last_error_code = 0;
+    ftp_fs->last_error_message[0] = '\0';
     return RET_OK;
   } else {
+    log_debug("%s\n", buf);
+    ftp_fs->last_error_code = ret;
+    tk_strncpy(ftp_fs->last_error_message, buf, sizeof(ftp_fs->last_error_message)-1);
     return RET_FAIL;
   }
 }
@@ -259,13 +264,23 @@ static ret_t ftp_fs_cmd_stat(ftp_fs_t* ftp_fs, const char* filename, fs_stat_inf
   tokenizer_t t;
   return_value_if_fail(filename != NULL && fst != NULL, RET_BAD_PARAMS);
 
-  tk_snprintf(cmd, sizeof(cmd), "XSTAT %s\r\n", filename);
-  ret = ftp_fs_cmd(ftp_fs, cmd, NULL, buf, sizeof(buf));
-  if (ret != RET_OK) {
-    return ret;
-  }
-
   memset(fst, 0x00, sizeof(*fst));
+
+  if (ftp_fs->stat_cmd != NULL) {
+    tk_snprintf(cmd, sizeof(cmd), "%s %s\r\n", ftp_fs->stat_cmd, filename);
+    ret = ftp_fs_cmd(ftp_fs, cmd, NULL, buf, sizeof(buf));
+  } else {
+    tk_snprintf(cmd, sizeof(cmd), "XSTAT %s\r\n", filename);
+    ret = ftp_fs_cmd(ftp_fs, cmd, NULL, buf, sizeof(buf));
+    if (ret != RET_OK) {
+      if (ftp_fs->last_error_code == 500) {
+        tk_snprintf(cmd, sizeof(cmd), "STAT %s\r\n", filename);
+        ret = ftp_fs_cmd(ftp_fs, cmd, NULL, buf, sizeof(buf));
+      } else {
+        return ret;
+      }
+    }
+  }
 
   p = strstr(buf, ":\r\n");
   if (p != NULL) {
@@ -739,6 +754,18 @@ static ret_t ftp_fs_init(fs_t* fs) {
   return RET_OK;
 }
 
+static const char* ftp_fs_get_stat_cmd_from_welcome(const char* message) {
+  if (strstr(message, "vsFTPd") != NULL) {
+    return "STAT";
+  } else if (strstr(message, "AWTK") != NULL) {
+    return "XSTAT";
+  } else if (strstr(message, "pyftpdlib") != NULL) {
+    return "XSTAT";
+  }
+
+  return NULL;
+}
+
 fs_t* ftp_fs_create(const char* host, uint32_t port, const char* user, const char* password) {
   ftp_fs_t* ftp_fs = NULL;
   char buf[1024] = {0};
@@ -757,7 +784,8 @@ fs_t* ftp_fs_create(const char* host, uint32_t port, const char* user, const cha
   /*welcome message*/
   tk_iostream_read(ftp_fs->ios, buf, sizeof(buf));
   log_debug("%s", buf);
-
+  
+  ftp_fs->stat_cmd = ftp_fs_get_stat_cmd_from_welcome(buf);
   goto_error_if_fail(ftp_fs_login(ftp_fs) == RET_OK);
 
   return (fs_t*)(ftp_fs);

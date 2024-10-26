@@ -18,4 +18,17 @@ pip install pyftpdlib
 python3 start_ftpd.py
 ```
 
+## 2. linux vsftpd
+
+* config file
+
+```
+/etc/vsftpd.conf
+```
+
+* start
+
+````
+sudo systemctl restart vsftpd
+```
 

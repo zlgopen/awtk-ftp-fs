@@ -42,6 +42,9 @@ typedef struct _ftp_fs_t {
   tk_iostream_t *ios;
   tk_iostream_t *data_ios;
   int data_port;
+  int last_error_code;
+  char last_error_message[256];
+  const char* stat_cmd;
 } ftp_fs_t;
 
 /**

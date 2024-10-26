@@ -256,7 +256,7 @@ static ret_t ftp_fs_cmd(ftp_fs_t* ftp_fs, const char* cmd, int32_t* ret_code, ch
     *ret_code = ret;
   }
 
-  if (tk_str_start_with(buf, "213-Status of")) {
+  if (tk_str_start_with(buf, "213-Status of") || tk_str_start_with(buf, "213-Status follows")) {
     ftp_fs_read_until_end(ftp_fs, buf, sizeof(buf) - 1, "213 End of status");
   } else if (tk_str_start_with(buf, "213-Status begin")) {
     ftp_fs_read_until_end(ftp_fs, buf, sizeof(buf) - 1, "213 Status end");

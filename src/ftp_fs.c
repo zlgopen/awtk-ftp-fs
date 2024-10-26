@@ -31,11 +31,11 @@
 
 #include "streams/inet/iostream_tcp.h"
 
-static ret_t ftp_fs_pasv(ftp_fs_t *ftp_fs);
-static ret_t ftp_fs_cmd(ftp_fs_t *ftp_fs, const char *cmd, int32_t *ret_code,
-                        char *ret_data, uint32_t ret_data_size);
+static ret_t ftp_fs_pasv(ftp_fs_t* ftp_fs);
+static ret_t ftp_fs_cmd(ftp_fs_t* ftp_fs, const char* cmd, int32_t* ret_code, char* ret_data,
+                        uint32_t ret_data_size);
 
-static ret_t ftp_fs_expect226(ftp_fs_t *ftp_fs) {
+static ret_t ftp_fs_expect226(ftp_fs_t* ftp_fs) {
   char buf[1024] = {0};
   int32_t ret = tk_iostream_read(ftp_fs->ios, buf, sizeof(buf));
   return_value_if_fail(ret > 0, RET_IO);
@@ -49,7 +49,15 @@ static ret_t ftp_fs_expect226(ftp_fs_t *ftp_fs) {
   }
 }
 
-static ret_t ftp_fs_read_data(ftp_fs_t *ftp_fs, wbuffer_t *wb) {
+static ret_t fs_ftp_binary_mode(ftp_fs_t* ftp_fs) {
+  char cmd[1024] = {0};
+  return_value_if_fail(ftp_fs != NULL, RET_BAD_PARAMS);
+
+  tk_snprintf(cmd, sizeof(cmd), "TYPE I\r\n");
+  return ftp_fs_cmd(ftp_fs, cmd, NULL, NULL, 0);
+}
+
+static ret_t ftp_fs_read_data(ftp_fs_t* ftp_fs, wbuffer_t* wb) {
   int32_t ret = 0;
   char buf[1024] = {0};
   return_value_if_fail(ftp_fs != NULL && wb != NULL, RET_BAD_PARAMS);
@@ -66,20 +74,20 @@ static ret_t ftp_fs_read_data(ftp_fs_t *ftp_fs, wbuffer_t *wb) {
   return ftp_fs_expect226(ftp_fs);
 }
 
-static fs_item_t *fs_item_parse(const char *line) {
+static fs_item_t* fs_item_parse(const char* line) {
   tokenizer_t t;
   char skey[128] = {0};
   char svalue[128] = {0};
-  fs_item_t *item = NULL;
+  fs_item_t* item = NULL;
   return_value_if_fail(line != NULL && *line != '\0', NULL);
   item = fs_item_create();
   return_value_if_fail(item != NULL, NULL);
 
   tokenizer_init(&t, line, strlen(line), ";");
   while (tokenizer_has_more(&t)) {
-    const char *kv = tokenizer_next(&t);
+    const char* kv = tokenizer_next(&t);
     if (kv != NULL) {
-      const char *p = strchr(kv, '=');
+      const char* p = strchr(kv, '=');
       if (p != NULL) {
         int len = tk_min_int(p - kv, sizeof(skey));
 
@@ -105,14 +113,13 @@ static fs_item_t *fs_item_parse(const char *line) {
   return item;
 }
 
-static ret_t ftp_fs_cmd_list(ftp_fs_t *ftp_fs, const char *path,
-                             darray_t *items) {
+static ret_t ftp_fs_cmd_list(ftp_fs_t* ftp_fs, const char* path, darray_t* items) {
   wbuffer_t wb;
   char cmd[1024] = {0};
   ret_t ret = RET_FAIL;
   char buf[1024] = {0};
   return_value_if_fail(path != NULL && items != NULL, RET_BAD_PARAMS);
-  return_value_if_fail(fs_change_dir((fs_t *)ftp_fs, path) == RET_OK, RET_FAIL);
+  return_value_if_fail(fs_change_dir((fs_t*)ftp_fs, path) == RET_OK, RET_FAIL);
   return_value_if_fail(ftp_fs_pasv(ftp_fs) == RET_OK, RET_FAIL);
 
   tk_snprintf(cmd, sizeof(cmd), "MLSD %s\r\n", path);
@@ -122,11 +129,11 @@ static ret_t ftp_fs_cmd_list(ftp_fs_t *ftp_fs, const char *path,
   wbuffer_init_extendable(&wb);
   if (ftp_fs_read_data(ftp_fs, &wb) == RET_OK) {
     tokenizer_t t;
-    tokenizer_init(&t, (const char *)(wb.data), wb.cursor, "\r\n");
+    tokenizer_init(&t, (const char*)(wb.data), wb.cursor, "\r\n");
     while (tokenizer_has_more(&t)) {
-      const char *line = tokenizer_next(&t);
+      const char* line = tokenizer_next(&t);
       if (line != NULL) {
-        fs_item_t *item = fs_item_parse(line);
+        fs_item_t* item = fs_item_parse(line);
         if (item != NULL) {
           darray_push(items, item);
         }
@@ -139,8 +146,8 @@ static ret_t ftp_fs_cmd_list(ftp_fs_t *ftp_fs, const char *path,
   return RET_OK;
 }
 
-static ret_t ftp_fs_cmd(ftp_fs_t *ftp_fs, const char *cmd, int32_t *ret_code,
-                        char *ret_data, uint32_t ret_data_size) {
+static ret_t ftp_fs_cmd(ftp_fs_t* ftp_fs, const char* cmd, int32_t* ret_code, char* ret_data,
+                        uint32_t ret_data_size) {
   char buf[1024] = {0};
   int32_t len = strlen(cmd);
   int32_t ret = tk_iostream_write(ftp_fs->ios, cmd, len);
@@ -155,8 +162,15 @@ static ret_t ftp_fs_cmd(ftp_fs_t *ftp_fs, const char *cmd, int32_t *ret_code,
     *ret_code = ret;
   }
 
+  if (strstr(buf, "213-Status") != NULL && strstr(buf, "End of status") == NULL) {
+    while(strstr(buf, "End of status") == NULL) {
+      len = tk_strlen(buf);
+      len += tk_iostream_read(ftp_fs->ios, buf + len, sizeof(buf) - len);
+    }
+  }
+
   if (ret_data != NULL && ret_data_size > 0) {
-    const char *p = strchr(buf, ' ');
+    const char* p = strchr(buf, ' ');
     if (p != NULL) {
       tk_strncpy(ret_data, p + 1, ret_data_size);
     }
@@ -169,7 +183,7 @@ static ret_t ftp_fs_cmd(ftp_fs_t *ftp_fs, const char *cmd, int32_t *ret_code,
   }
 }
 
-static ret_t ftp_fs_login(ftp_fs_t *ftp_fs) {
+static ret_t ftp_fs_login(ftp_fs_t* ftp_fs) {
   char cmd[1024] = {0};
   ret_t ret = RET_FAIL;
   tk_snprintf(cmd, sizeof(cmd), "USER %s\r\n", ftp_fs->user);
@@ -180,10 +194,12 @@ static ret_t ftp_fs_login(ftp_fs_t *ftp_fs) {
   ret = ftp_fs_cmd(ftp_fs, cmd, NULL, NULL, 0);
   return_value_if_fail(ret == RET_OK, ret);
 
+  fs_ftp_binary_mode(ftp_fs);
+
   return RET_OK;
 }
 
-static ret_t ftp_fs_pasv(ftp_fs_t *ftp_fs) {
+static ret_t ftp_fs_pasv(ftp_fs_t* ftp_fs) {
   char cmd[1024] = {0};
   ret_t ret = RET_FAIL;
   char buf[1024] = {0};
@@ -193,22 +209,21 @@ static ret_t ftp_fs_pasv(ftp_fs_t *ftp_fs) {
   int ip3 = 0;
   int port_hi = 0;
   int port_lo = 0;
-  const char *p = NULL;
+  const char* p = NULL;
 
   if (ftp_fs->data_ios != NULL) {
     TK_OBJECT_UNREF(ftp_fs->data_ios);
     ftp_fs->data_ios = NULL;
   }
 
-  tk_snprintf(cmd, sizeof(cmd), "PASV %s\r\n", ftp_fs->user);
+  tk_snprintf(cmd, sizeof(cmd), "PASV\r\n");
   ret = ftp_fs_cmd(ftp_fs, cmd, NULL, buf, sizeof(buf));
   return_value_if_fail(ret == RET_OK, ret);
 
   p = strchr(buf, '(');
   return_value_if_fail(p != NULL, RET_FAIL);
 
-  if (tk_sscanf(p, "(%d,%d,%d,%d,%d,%d)", &ip0, &ip1, &ip2, &ip3, &port_hi,
-             &port_lo) == 6) {
+  if (tk_sscanf(p, "(%d,%d,%d,%d,%d,%d)", &ip0, &ip1, &ip2, &ip3, &port_hi, &port_lo) == 6) {
     char ip[128] = {0};
     ftp_fs->data_port = port_hi * 256 + port_lo;
     tk_snprintf(ip, sizeof(ip), "%d.%d.%d.%d", ip0, ip1, ip2, ip3);
@@ -221,8 +236,7 @@ static ret_t ftp_fs_pasv(ftp_fs_t *ftp_fs) {
   return RET_FAIL;
 }
 
-static ret_t ftp_fs_cmd_get_size(ftp_fs_t *ftp_fs, const char *filename,
-                                 int32_t *size) {
+static ret_t ftp_fs_cmd_get_size(ftp_fs_t* ftp_fs, const char* filename, int32_t* size) {
   char cmd[1024] = {0};
   ret_t ret = RET_FAIL;
   char buf[1024] = {0};
@@ -237,11 +251,11 @@ static ret_t ftp_fs_cmd_get_size(ftp_fs_t *ftp_fs, const char *filename,
   return RET_OK;
 }
 
-static ret_t ftp_fs_cmd_stat(ftp_fs_t *ftp_fs, const char *filename,
-                             fs_stat_info_t *fst) {
+static ret_t ftp_fs_cmd_stat(ftp_fs_t* ftp_fs, const char* filename, fs_stat_info_t* fst) {
   char cmd[1024] = {0};
   ret_t ret = RET_FAIL;
   char buf[1024] = {0};
+  const char* p = NULL;
   tokenizer_t t;
   return_value_if_fail(filename != NULL && fst != NULL, RET_BAD_PARAMS);
 
@@ -253,28 +267,52 @@ static ret_t ftp_fs_cmd_stat(ftp_fs_t *ftp_fs, const char *filename,
 
   memset(fst, 0x00, sizeof(*fst));
 
-  tokenizer_init(&t, buf, strlen(buf), " ");
-  fst->size = tokenizer_next_int64(&t, 0);
-  fst->mtime = tokenizer_next_int64(&t, 0);
-  fst->ctime = tokenizer_next_int64(&t, 0);
-  fst->atime = tokenizer_next_int64(&t, 0);
-  fst->is_dir = tokenizer_next_int(&t, 0);
-  fst->is_link = tokenizer_next_int(&t, 0);
-  fst->is_reg_file = tokenizer_next_int(&t, 0);
-  fst->uid = tokenizer_next_int(&t, 0);
-  fst->gid = tokenizer_next_int(&t, 0);
-  tokenizer_deinit(&t);
+  p = strstr(buf, ":\r\n");
+  if (p != NULL) {
+    p += strlen(":\r\n");
+    // p = 213-Status of \"/test.bin\":\r\n-rw-r--r--   1 jim      staff        1650 Oct 25 13:12 test.bin\r\n213 End of status.\r\n
+    tokenizer_init(&t, p, strlen(p), " ");
+    if (tokenizer_has_more(&t)) {
+      p = tokenizer_next(&t);  // -rw-r--r--
+      if (tk_strcmp(p, "213") == 0) {
+        fst->is_dir = TRUE;
+        //空目录可能没有内容，比如："/abc":\r\n213 End of status.\r\n
+      } else {
+        fst->is_reg_file = p[0] == '-';
+        fst->is_dir = p[0] == 'd';
+        p = tokenizer_next(&t);                // 1
+        p = tokenizer_next(&t);                // jim
+        p = tokenizer_next(&t);                // staff
+        fst->size = tokenizer_next_int64(&t, 0);  // 1650
+        p = tokenizer_next(&t);                // Oct
+        p = tokenizer_next(&t);                // 25
+        p = tokenizer_next(&t);                // 13:12
+      }
+    }
+    tokenizer_deinit(&t);
+  } else {
+    tokenizer_init(&t, buf, strlen(buf), " ");
+    fst->size = tokenizer_next_int64(&t, 0);
+    fst->mtime = tokenizer_next_int64(&t, 0);
+    fst->ctime = tokenizer_next_int64(&t, 0);
+    fst->atime = tokenizer_next_int64(&t, 0);
+    fst->is_dir = tokenizer_next_int(&t, 0);
+    fst->is_link = tokenizer_next_int(&t, 0);
+    fst->is_reg_file = tokenizer_next_int(&t, 0);
+    fst->uid = tokenizer_next_int(&t, 0);
+    fst->gid = tokenizer_next_int(&t, 0);
+    tokenizer_deinit(&t);
+  }
 
   return RET_OK;
 }
 
-static ret_t ftp_fs_cmd_get_pwd(ftp_fs_t *ftp_fs, char *path,
-                                uint32_t path_size) {
+static ret_t ftp_fs_cmd_get_pwd(ftp_fs_t* ftp_fs, char* path, uint32_t path_size) {
   char cmd[1024] = {0};
   ret_t ret = RET_FAIL;
   char buf[1024] = {0};
-  const char *p = NULL;
-  const char *pend = NULL;
+  const char* p = NULL;
+  const char* pend = NULL;
   return_value_if_fail(path != NULL && path_size > 0, RET_BAD_PARAMS);
 
   tk_snprintf(cmd, sizeof(cmd), "PWD\r\n");
@@ -296,22 +334,20 @@ static ret_t ftp_fs_cmd_get_pwd(ftp_fs_t *ftp_fs, char *path,
 
 typedef struct _fs_ftp_file_t {
   fs_file_t file;
-  ftp_fs_t *ftp_fs;
+  ftp_fs_t* ftp_fs;
   char name[MAX_PATH + 1];
   char temp_path[MAX_PATH + 1];
-  fs_file_t *temp_file;
+  fs_file_t* temp_file;
   bool_t changed;
 } fs_ftp_file_t;
 
-static ret_t ftp_fs_cmd_download_file(ftp_fs_t *ftp_fs,
-                                      const char *remote_filename,
-                                      const char *local_filename) {
+static ret_t ftp_fs_cmd_download_file(ftp_fs_t* ftp_fs, const char* remote_filename,
+                                      const char* local_filename) {
   int ret = 0;
   char cmd[1024] = {0};
   char buf[1024] = {0};
-  fs_file_t *file = NULL;
-  return_value_if_fail(ftp_fs != NULL && remote_filename != NULL &&
-                           local_filename != NULL,
+  fs_file_t* file = NULL;
+  return_value_if_fail(ftp_fs != NULL && remote_filename != NULL && local_filename != NULL,
                        RET_BAD_PARAMS);
 
   goto_error_if_fail(ftp_fs_pasv(ftp_fs) == RET_OK);
@@ -338,15 +374,13 @@ error:
   return RET_OK;
 }
 
-static ret_t ftp_fs_cmd_upload_file(ftp_fs_t *ftp_fs,
-                                    const char *local_filename,
-                                    const char *remote_filename) {
+static ret_t ftp_fs_cmd_upload_file(ftp_fs_t* ftp_fs, const char* local_filename,
+                                    const char* remote_filename) {
   int ret = 0;
   char cmd[1024] = {0};
   char buf[1024] = {0};
-  fs_file_t *file = NULL;
-  return_value_if_fail(ftp_fs != NULL && remote_filename != NULL &&
-                           local_filename != NULL,
+  fs_file_t* file = NULL;
+  return_value_if_fail(ftp_fs != NULL && remote_filename != NULL && local_filename != NULL,
                        RET_BAD_PARAMS);
 
   file = fs_open_file(os_fs(), local_filename, "rb");
@@ -357,8 +391,7 @@ static ret_t ftp_fs_cmd_upload_file(ftp_fs_t *ftp_fs,
   goto_error_if_fail(ftp_fs_cmd(ftp_fs, cmd, NULL, NULL, 0) == RET_OK);
 
   while ((ret = fs_file_read(file, buf, sizeof(buf))) > 0) {
-    break_if_fail(tk_iostream_write_len(ftp_fs->data_ios, buf, ret, 2000) ==
-                  ret);
+    break_if_fail(tk_iostream_write_len(ftp_fs->data_ios, buf, ret, 2000) == ret);
   }
 
   fs_file_close(file);
@@ -372,25 +405,23 @@ error:
   return RET_FAIL;
 }
 
-static int32_t fs_ftp_file_read(fs_file_t *file, void *buffer, uint32_t size) {
-  fs_ftp_file_t *ftp_file = (fs_ftp_file_t *)file;
+static int32_t fs_ftp_file_read(fs_file_t* file, void* buffer, uint32_t size) {
+  fs_ftp_file_t* ftp_file = (fs_ftp_file_t*)file;
   return_value_if_fail(ftp_file != NULL, RET_BAD_PARAMS);
 
   return fs_file_read(ftp_file->temp_file, buffer, size);
 }
 
-static int32_t fs_ftp_file_write(fs_file_t *file, const void *buffer,
-                                 uint32_t size) {
-  fs_ftp_file_t *ftp_file = (fs_ftp_file_t *)file;
+static int32_t fs_ftp_file_write(fs_file_t* file, const void* buffer, uint32_t size) {
+  fs_ftp_file_t* ftp_file = (fs_ftp_file_t*)file;
   return_value_if_fail(ftp_file != NULL, RET_BAD_PARAMS);
   ftp_file->changed = TRUE;
 
   return fs_file_write(ftp_file->temp_file, buffer, size);
 }
 
-static int32_t fs_ftp_file_printf(fs_file_t *file, const char *const format_str,
-                                  va_list vl) {
-  fs_ftp_file_t *ftp_file = (fs_ftp_file_t *)file;
+static int32_t fs_ftp_file_printf(fs_file_t* file, const char* const format_str, va_list vl) {
+  fs_ftp_file_t* ftp_file = (fs_ftp_file_t*)file;
   return_value_if_fail(ftp_file != NULL, RET_BAD_PARAMS);
 
   if (ftp_file->temp_file != NULL && ftp_file->temp_file->vt != NULL &&
@@ -402,63 +433,62 @@ static int32_t fs_ftp_file_printf(fs_file_t *file, const char *const format_str,
   return RET_FAIL;
 }
 
-static ret_t fs_ftp_file_seek(fs_file_t *file, int32_t offset) {
-  fs_ftp_file_t *ftp_file = (fs_ftp_file_t *)file;
+static ret_t fs_ftp_file_seek(fs_file_t* file, int32_t offset) {
+  fs_ftp_file_t* ftp_file = (fs_ftp_file_t*)file;
   return_value_if_fail(ftp_file != NULL, RET_BAD_PARAMS);
 
   return fs_file_seek(ftp_file->temp_file, offset);
 }
 
-static int64_t fs_ftp_file_tell(fs_file_t *file) {
-  fs_ftp_file_t *ftp_file = (fs_ftp_file_t *)file;
+static int64_t fs_ftp_file_tell(fs_file_t* file) {
+  fs_ftp_file_t* ftp_file = (fs_ftp_file_t*)file;
   return_value_if_fail(ftp_file != NULL, 0);
 
   return fs_file_tell(ftp_file->temp_file);
 }
 
-static int64_t fs_ftp_file_size(fs_file_t *file) {
-  fs_ftp_file_t *ftp_file = (fs_ftp_file_t *)file;
+static int64_t fs_ftp_file_size(fs_file_t* file) {
+  fs_ftp_file_t* ftp_file = (fs_ftp_file_t*)file;
   return_value_if_fail(ftp_file != NULL, 0);
 
   return fs_file_size(ftp_file->temp_file);
 }
 
-static ret_t fs_ftp_file_stat(fs_file_t *file, fs_stat_info_t *fst) {
-  fs_ftp_file_t *ftp_file = (fs_ftp_file_t *)file;
+static ret_t fs_ftp_file_stat(fs_file_t* file, fs_stat_info_t* fst) {
+  fs_ftp_file_t* ftp_file = (fs_ftp_file_t*)file;
   return_value_if_fail(ftp_file != NULL, RET_BAD_PARAMS);
 
   return fs_file_stat(ftp_file->temp_file, fst);
 }
 
-static ret_t fs_ftp_file_sync(fs_file_t *file) {
-  fs_ftp_file_t *ftp_file = (fs_ftp_file_t *)file;
+static ret_t fs_ftp_file_sync(fs_file_t* file) {
+  fs_ftp_file_t* ftp_file = (fs_ftp_file_t*)file;
   return_value_if_fail(ftp_file != NULL, RET_BAD_PARAMS);
 
   if (ftp_file->changed) {
-    return ftp_fs_cmd_upload_file(ftp_file->ftp_fs, ftp_file->temp_path,
-                                  ftp_file->name);
+    return ftp_fs_cmd_upload_file(ftp_file->ftp_fs, ftp_file->temp_path, ftp_file->name);
   }
 
   return RET_OK;
 }
 
-static ret_t fs_ftp_file_truncate(fs_file_t *file, int32_t size) {
-  fs_ftp_file_t *ftp_file = (fs_ftp_file_t *)file;
+static ret_t fs_ftp_file_truncate(fs_file_t* file, int32_t size) {
+  fs_ftp_file_t* ftp_file = (fs_ftp_file_t*)file;
   return_value_if_fail(ftp_file != NULL, RET_BAD_PARAMS);
 
   ftp_file->changed = TRUE;
   return fs_file_truncate(ftp_file->temp_file, size);
 }
 
-static bool_t fs_ftp_file_eof(fs_file_t *file) {
-  fs_ftp_file_t *ftp_file = (fs_ftp_file_t *)file;
+static bool_t fs_ftp_file_eof(fs_file_t* file) {
+  fs_ftp_file_t* ftp_file = (fs_ftp_file_t*)file;
   return_value_if_fail(ftp_file != NULL, TRUE);
 
   return fs_file_eof(ftp_file->temp_file);
 }
 
-static ret_t fs_ftp_file_close(fs_file_t *file) {
-  fs_ftp_file_t *ftp_file = (fs_ftp_file_t *)file;
+static ret_t fs_ftp_file_close(fs_file_t* file) {
+  fs_ftp_file_t* ftp_file = (fs_ftp_file_t*)file;
   return_value_if_fail(ftp_file != NULL, RET_BAD_PARAMS);
   if (ftp_file->temp_file != NULL) {
     fs_file_sync(ftp_file->temp_file);
@@ -467,8 +497,7 @@ static ret_t fs_ftp_file_close(fs_file_t *file) {
   }
 
   if (file_exist(ftp_file->temp_path)) {
-    ftp_fs_cmd_upload_file(ftp_file->ftp_fs, ftp_file->temp_path,
-                           ftp_file->name);
+    ftp_fs_cmd_upload_file(ftp_file->ftp_fs, ftp_file->temp_path, ftp_file->name);
     fs_remove_file(os_fs(), ftp_file->temp_path);
   }
 
@@ -489,17 +518,15 @@ static const fs_file_vtable_t s_file_vtable = {.read = fs_ftp_file_read,
                                                .eof = fs_ftp_file_eof,
                                                .close = fs_ftp_file_close};
 
-static fs_file_t *fs_ftp_open_file(fs_t *fs, const char *name,
-                                   const char *mode) {
-  fs_ftp_file_t *ftp_file = NULL;
+static fs_file_t* fs_ftp_open_file(fs_t* fs, const char* name, const char* mode) {
+  fs_ftp_file_t* ftp_file = NULL;
   char temp_path[MAX_PATH + 1] = {0};
-  ftp_fs_t *ftp_fs = FTP_FS(fs);
+  ftp_fs_t* ftp_fs = FTP_FS(fs);
   return_value_if_fail(fs != NULL && name != NULL && mode != NULL, NULL);
   ftp_file = TKMEM_ZALLOC(fs_ftp_file_t);
   return_value_if_fail(ftp_file != NULL, NULL);
 
-  tk_snprintf(temp_path, sizeof(temp_path) - 1, "%s_%d_%s", ftp_fs->host,
-              ftp_fs->data_port, name);
+  tk_snprintf(temp_path, sizeof(temp_path) - 1, "%s_%d_%s", ftp_fs->host, ftp_fs->data_port, name);
   tk_replace_char(temp_path, '/', '_');
   tk_replace_char(temp_path, '\\', '_');
 
@@ -516,7 +543,7 @@ static fs_file_t *fs_ftp_open_file(fs_t *fs, const char *name,
   if (ftp_file->temp_file != NULL) {
     ftp_file->file.vt = &s_file_vtable;
     ftp_file->ftp_fs = ftp_fs;
-    return (fs_file_t *)ftp_file;
+    return (fs_file_t*)ftp_file;
   }
 
 error:
@@ -527,24 +554,24 @@ error:
 typedef struct _fs_ftp_dir_t {
   fs_dir_t dir;
   darray_t items;
-  ftp_fs_t *ftp_fs;
+  ftp_fs_t* ftp_fs;
   uint32_t current;
 } fs_ftp_dir_t;
 
-static ret_t fs_ftp_dir_rewind(fs_dir_t *dir) {
-  fs_ftp_dir_t *ftp_dir = (fs_ftp_dir_t *)dir;
+static ret_t fs_ftp_dir_rewind(fs_dir_t* dir) {
+  fs_ftp_dir_t* ftp_dir = (fs_ftp_dir_t*)dir;
   return_value_if_equal(dir != NULL, RET_OK);
   ftp_dir->current = 0;
 
   return RET_OK;
 }
 
-ret_t fs_ftp_dir_read(fs_dir_t *dir, fs_item_t *item) {
-  fs_ftp_dir_t *ftp_dir = (fs_ftp_dir_t *)dir;
+ret_t fs_ftp_dir_read(fs_dir_t* dir, fs_item_t* item) {
+  fs_ftp_dir_t* ftp_dir = (fs_ftp_dir_t*)dir;
   return_value_if_equal(dir != NULL && item != NULL, RET_OK);
 
   if (ftp_dir->current < ftp_dir->items.size) {
-    fs_item_t *i = (fs_item_t *)darray_get(&ftp_dir->items, ftp_dir->current);
+    fs_item_t* i = (fs_item_t*)darray_get(&ftp_dir->items, ftp_dir->current);
     *item = *i;
     ftp_dir->current++;
 
@@ -554,8 +581,8 @@ ret_t fs_ftp_dir_read(fs_dir_t *dir, fs_item_t *item) {
   }
 }
 
-static ret_t fs_ftp_dir_close(fs_dir_t *dir) {
-  fs_ftp_dir_t *ftp_dir = (fs_ftp_dir_t *)dir;
+static ret_t fs_ftp_dir_close(fs_dir_t* dir) {
+  fs_ftp_dir_t* ftp_dir = (fs_ftp_dir_t*)dir;
   return_value_if_equal(dir != NULL, RET_OK);
 
   darray_deinit(&ftp_dir->items);
@@ -564,12 +591,11 @@ static ret_t fs_ftp_dir_close(fs_dir_t *dir) {
   return RET_OK;
 }
 
-static const fs_dir_vtable_t s_dir_vtable = {.read = fs_ftp_dir_read,
-                                             .rewind = fs_ftp_dir_rewind,
-                                             .close = fs_ftp_dir_close};
+static const fs_dir_vtable_t s_dir_vtable = {
+    .read = fs_ftp_dir_read, .rewind = fs_ftp_dir_rewind, .close = fs_ftp_dir_close};
 
-static fs_dir_t *fs_ftp_open_dir(fs_t *fs, const char *name) {
-  fs_ftp_dir_t *dir = NULL;
+static fs_dir_t* fs_ftp_open_dir(fs_t* fs, const char* name) {
+  fs_ftp_dir_t* dir = NULL;
   return_value_if_fail(fs != NULL && name != NULL, NULL);
   dir = TKMEM_ZALLOC(fs_ftp_dir_t);
   return_value_if_fail(dir != NULL, NULL);
@@ -579,122 +605,117 @@ static fs_dir_t *fs_ftp_open_dir(fs_t *fs, const char *name) {
   dir->ftp_fs = FTP_FS(fs);
 
   if (ftp_fs_cmd_list(dir->ftp_fs, name, &dir->items) == RET_OK) {
-    return (fs_dir_t *)dir;
+    return (fs_dir_t*)dir;
   } else {
-    fs_dir_close((fs_dir_t *)dir);
+    fs_dir_close((fs_dir_t*)dir);
     return NULL;
   }
 }
 
-static ret_t fs_ftp_remove_file(fs_t *fs, const char *name) {
+static ret_t fs_ftp_remove_file(fs_t* fs, const char* name) {
   char cmd[1024] = {0};
-  ftp_fs_t *ftp_fs = FTP_FS(fs);
+  ftp_fs_t* ftp_fs = FTP_FS(fs);
   return_value_if_fail(ftp_fs != NULL && name != NULL, RET_BAD_PARAMS);
 
   tk_snprintf(cmd, sizeof(cmd), "DELE %s\r\n", name);
   return ftp_fs_cmd(ftp_fs, cmd, NULL, NULL, 0);
 }
 
-static bool_t fs_ftp_file_exist(fs_t *fs, const char *name) {
+static bool_t fs_ftp_file_exist(fs_t* fs, const char* name) {
   fs_stat_info_t info;
   return fs_stat(fs, name, &info) == RET_OK && info.is_reg_file;
 }
 
-static ret_t fs_ftp_file_rename(fs_t *fs, const char *name,
-                                const char *new_name) {
+static ret_t fs_ftp_file_rename(fs_t* fs, const char* name, const char* new_name) {
   char cmd[1024] = {0};
-  ftp_fs_t *ftp_fs = FTP_FS(fs);
-  return_value_if_fail(ftp_fs != NULL && name != NULL && new_name != NULL,
-                       RET_BAD_PARAMS);
+  ftp_fs_t* ftp_fs = FTP_FS(fs);
+  return_value_if_fail(ftp_fs != NULL && name != NULL && new_name != NULL, RET_BAD_PARAMS);
 
   tk_snprintf(cmd, sizeof(cmd), "RNFR %s\r\n", name);
-  return_value_if_fail(ftp_fs_cmd(ftp_fs, cmd, NULL, NULL, 0) == RET_OK,
-                       RET_FAIL);
+  return_value_if_fail(ftp_fs_cmd(ftp_fs, cmd, NULL, NULL, 0) == RET_OK, RET_FAIL);
 
   tk_snprintf(cmd, sizeof(cmd), "RNTO %s\r\n", new_name);
-  return_value_if_fail(ftp_fs_cmd(ftp_fs, cmd, NULL, NULL, 0) == RET_OK,
-                       RET_FAIL);
+  return_value_if_fail(ftp_fs_cmd(ftp_fs, cmd, NULL, NULL, 0) == RET_OK, RET_FAIL);
 
   return RET_OK;
 }
 
-static ret_t fs_ftp_remove_dir(fs_t *fs, const char *name) {
+static ret_t fs_ftp_remove_dir(fs_t* fs, const char* name) {
   char cmd[1024] = {0};
-  ftp_fs_t *ftp_fs = FTP_FS(fs);
+  ftp_fs_t* ftp_fs = FTP_FS(fs);
   return_value_if_fail(ftp_fs != NULL && name != NULL, RET_BAD_PARAMS);
 
   tk_snprintf(cmd, sizeof(cmd), "RMD %s\r\n", name);
   return ftp_fs_cmd(ftp_fs, cmd, NULL, NULL, 0);
 }
 
-static ret_t fs_ftp_change_dir(fs_t *fs, const char *name) {
+static ret_t fs_ftp_change_dir(fs_t* fs, const char* name) {
   char cmd[1024] = {0};
-  ftp_fs_t *ftp_fs = FTP_FS(fs);
+  ftp_fs_t* ftp_fs = FTP_FS(fs);
   return_value_if_fail(ftp_fs != NULL && name != NULL, RET_BAD_PARAMS);
 
   tk_snprintf(cmd, sizeof(cmd), "CWD %s\r\n", name);
   return ftp_fs_cmd(ftp_fs, cmd, NULL, NULL, 0);
 }
 
-static ret_t fs_ftp_create_dir(fs_t *fs, const char *name) {
+static ret_t fs_ftp_create_dir(fs_t* fs, const char* name) {
   char cmd[1024] = {0};
-  ftp_fs_t *ftp_fs = FTP_FS(fs);
+  ftp_fs_t* ftp_fs = FTP_FS(fs);
   return_value_if_fail(ftp_fs != NULL && name != NULL, RET_BAD_PARAMS);
 
   tk_snprintf(cmd, sizeof(cmd), "MKD %s\r\n", name);
   return ftp_fs_cmd(ftp_fs, cmd, NULL, NULL, 0);
 }
 
-static bool_t fs_ftp_dir_exist(fs_t *fs, const char *name) {
+static bool_t fs_ftp_dir_exist(fs_t* fs, const char* name) {
   fs_stat_info_t info;
   return fs_stat(fs, name, &info) == RET_OK && info.is_dir;
 }
 
-static ret_t fs_ftp_dir_rename(fs_t *fs, const char *name,
-                               const char *new_name) {
+static ret_t fs_ftp_dir_rename(fs_t* fs, const char* name, const char* new_name) {
   return fs_ftp_file_rename(fs, name, new_name);
 }
 
-static int32_t fs_ftp_get_file_size(fs_t *fs, const char *name) {
+static int32_t fs_ftp_get_file_size(fs_t* fs, const char* name) {
   int32_t size = 0;
-  ftp_fs_t *ftp_fs = FTP_FS(fs);
+  ftp_fs_t* ftp_fs = FTP_FS(fs);
   return_value_if_fail(ftp_fs != NULL, RET_BAD_PARAMS);
 
   return ftp_fs_cmd_get_size(ftp_fs, name, &size) == RET_OK ? size : 0;
 }
 
-static ret_t fs_ftp_get_disk_info(fs_t *fs, const char *volume,
-                                  int32_t *free_kb, int32_t *total_kb) {
+static ret_t fs_ftp_get_disk_info(fs_t* fs, const char* volume, int32_t* free_kb,
+                                  int32_t* total_kb) {
   return RET_NOT_IMPL;
 }
 
-static ret_t fs_ftp_stat(fs_t *fs, const char *name, fs_stat_info_t *fst) {
-  ftp_fs_t *ftp_fs = FTP_FS(fs);
+static ret_t fs_ftp_stat(fs_t* fs, const char* name, fs_stat_info_t* fst) {
+  ftp_fs_t* ftp_fs = FTP_FS(fs);
   return_value_if_fail(ftp_fs != NULL, RET_BAD_PARAMS);
 
   return ftp_fs_cmd_stat(ftp_fs, name, fst);
 }
 
-static ret_t fs_ftp_get_cwd(fs_t *fs, char path[MAX_PATH + 1]) {
-  ftp_fs_t *ftp_fs = FTP_FS(fs);
+static ret_t fs_ftp_get_cwd(fs_t* fs, char path[MAX_PATH + 1]) {
+  ftp_fs_t* ftp_fs = FTP_FS(fs);
   return_value_if_fail(ftp_fs != NULL, RET_BAD_PARAMS);
 
   return ftp_fs_cmd_get_pwd(ftp_fs, path, MAX_PATH);
 }
 
-static ret_t fs_ftp_get_exe(fs_t *fs, char path[MAX_PATH + 1]) {
+static ret_t fs_ftp_get_exe(fs_t* fs, char path[MAX_PATH + 1]) {
   return fs_get_exe(os_fs(), path);
 }
 
-static ret_t fs_ftp_get_temp_path(fs_t *fs, char path[MAX_PATH + 1]) {
+static ret_t fs_ftp_get_temp_path(fs_t* fs, char path[MAX_PATH + 1]) {
   return fs_get_temp_path(os_fs(), path);
 }
 
-static ret_t fs_ftp_get_user_storage_path(fs_t *fs, char path[MAX_PATH + 1]) {
+static ret_t fs_ftp_get_user_storage_path(fs_t* fs, char path[MAX_PATH + 1]) {
   return fs_get_user_storage_path(os_fs(), path);
 }
 
-static ret_t ftp_fs_init(fs_t *fs) {
+static ret_t ftp_fs_init(fs_t* fs) {
   fs->open_file = fs_ftp_open_file;
   fs->remove_file = fs_ftp_remove_file;
   fs->file_exist = fs_ftp_file_exist;
@@ -718,9 +739,8 @@ static ret_t ftp_fs_init(fs_t *fs) {
   return RET_OK;
 }
 
-fs_t *ftp_fs_create(const char *host, uint32_t port, const char *user,
-                    const char *password) {
-  ftp_fs_t *ftp_fs = NULL;
+fs_t* ftp_fs_create(const char* host, uint32_t port, const char* user, const char* password) {
+  ftp_fs_t* ftp_fs = NULL;
   char buf[1024] = {0};
   return_value_if_fail(port > 0 && user != NULL && password != NULL, NULL);
   ftp_fs = TKMEM_ZALLOC(ftp_fs_t);
@@ -740,17 +760,17 @@ fs_t *ftp_fs_create(const char *host, uint32_t port, const char *user,
 
   goto_error_if_fail(ftp_fs_login(ftp_fs) == RET_OK);
 
-  return (fs_t *)(ftp_fs);
+  return (fs_t*)(ftp_fs);
 error:
   if (ftp_fs != NULL) {
-    ftp_fs_destroy((fs_t *)(ftp_fs));
+    ftp_fs_destroy((fs_t*)(ftp_fs));
   }
 
   return NULL;
 }
 
-ret_t ftp_fs_destroy(fs_t *fs) {
-  ftp_fs_t *ftp_fs = FTP_FS(fs);
+ret_t ftp_fs_destroy(fs_t* fs) {
+  ftp_fs_t* ftp_fs = FTP_FS(fs);
   return_value_if_fail(ftp_fs != NULL, RET_BAD_PARAMS);
 
   TKMEM_FREE(ftp_fs->user);
@@ -763,8 +783,8 @@ ret_t ftp_fs_destroy(fs_t *fs) {
   return RET_OK;
 }
 
-ftp_fs_t *ftp_fs_cast(fs_t *fs) {
+ftp_fs_t* ftp_fs_cast(fs_t* fs) {
   return_value_if_fail(fs != NULL && fs->change_dir == fs_ftp_change_dir, NULL);
 
-  return (ftp_fs_t *)fs;
+  return (ftp_fs_t*)fs;
 }

@@ -40,3 +40,5 @@ test.png
 tags
 test.*
 res
+idl/idl.json
+src/ftp_fs.def

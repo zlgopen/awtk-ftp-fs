@@ -1,7 +1,7 @@
 /**
- * File:   fs.c
+ * File:   client.c
  * Author: AWTK Develop Team
- * Brief:  ftp fs
+ * Brief:  ftp fs client
  *
  * Copyright (c) 2023 - 2023  Guangzhou ZHIYUAN Electronics Co.,Ltd.
  *

@@ -26,17 +26,19 @@
 #include "tkc/path.h"
 #include "tkc/tokenizer.h"
 #include "tkc/utils.h"
+#include "streams/inet/iostream_tcp.h"
 
 #include "ftp_fs.h"
 
-#include "streams/inet/iostream_tcp.h"
+#define FTP_CMD_MAX_SIZE (MAX_PATH + 32)
+#define FTP_BUF_MAX_SIZE 1024
 
 static ret_t ftp_fs_pasv(ftp_fs_t* ftp_fs);
 static ret_t ftp_fs_cmd(ftp_fs_t* ftp_fs, const char* cmd, int32_t* ret_code, char* ret_data,
                         uint32_t ret_data_size);
 
 static ret_t ftp_fs_expect226(ftp_fs_t* ftp_fs) {
-  char buf[1024] = {0};
+  char buf[FTP_BUF_MAX_SIZE] = {0};
   int32_t ret = tk_iostream_read(ftp_fs->ios, buf, sizeof(buf) - 1);
   return_value_if_fail(ret > 0, RET_IO);
 
@@ -50,7 +52,7 @@ static ret_t ftp_fs_expect226(ftp_fs_t* ftp_fs) {
 }
 
 static ret_t fs_ftp_binary_mode(ftp_fs_t* ftp_fs) {
-  char cmd[1024] = {0};
+  char cmd[FTP_CMD_MAX_SIZE] = {0};
   return_value_if_fail(ftp_fs != NULL, RET_BAD_PARAMS);
 
   tk_snprintf(cmd, sizeof(cmd), "TYPE I\r\n");
@@ -59,7 +61,7 @@ static ret_t fs_ftp_binary_mode(ftp_fs_t* ftp_fs) {
 
 static ret_t ftp_fs_read_data(ftp_fs_t* ftp_fs, wbuffer_t* wb) {
   int32_t ret = 0;
-  char buf[1024] = {0};
+  char buf[FTP_BUF_MAX_SIZE] = {0};
   return_value_if_fail(ftp_fs != NULL && wb != NULL, RET_BAD_PARAMS);
 
   while ((ret = tk_iostream_read(ftp_fs->data_ios, buf, sizeof(buf) - 1)) > 0) {
@@ -163,9 +165,9 @@ static fs_item_t* fs_item_parse_mlsd(fs_item_t* item, const char* line) {
 
 static ret_t ftp_fs_cmd_list(ftp_fs_t* ftp_fs, const char* path, darray_t* items) {
   wbuffer_t wb;
-  char cmd[1024] = {0};
+  char cmd[FTP_CMD_MAX_SIZE] = {0};
   ret_t ret = RET_FAIL;
-  char buf[1024] = {0};
+  char buf[FTP_BUF_MAX_SIZE] = {0};
   ftp_list_method_t method = FTP_LIST_METHOD_MLSD;
 
   return_value_if_fail(path != NULL && items != NULL, RET_BAD_PARAMS);
@@ -242,7 +244,7 @@ static ret_t ftp_fs_read_until_end(ftp_fs_t* ftp_fs, char* buf, int32_t buf_len,
 
 static ret_t ftp_fs_cmd(ftp_fs_t* ftp_fs, const char* cmd, int32_t* ret_code, char* ret_data,
                         uint32_t ret_data_size) {
-  char buf[2048] = {0};
+  char buf[FTP_BUF_MAX_SIZE] = {0};
   int32_t len = strlen(cmd);
   int32_t ret = tk_iostream_write(ftp_fs->ios, cmd, len);
   return_value_if_fail(ret == len, RET_IO);
@@ -283,7 +285,7 @@ static ret_t ftp_fs_cmd(ftp_fs_t* ftp_fs, const char* cmd, int32_t* ret_code, ch
 }
 
 static ret_t ftp_fs_login(ftp_fs_t* ftp_fs) {
-  char cmd[1024] = {0};
+  char cmd[FTP_CMD_MAX_SIZE] = {0};
   ret_t ret = RET_FAIL;
   tk_snprintf(cmd, sizeof(cmd), "USER %s\r\n", ftp_fs->user);
   ret = ftp_fs_cmd(ftp_fs, cmd, NULL, NULL, 0);
@@ -299,9 +301,9 @@ static ret_t ftp_fs_login(ftp_fs_t* ftp_fs) {
 }
 
 static ret_t ftp_fs_pasv(ftp_fs_t* ftp_fs) {
-  char cmd[1024] = {0};
+  char cmd[FTP_CMD_MAX_SIZE] = {0};
   ret_t ret = RET_FAIL;
-  char buf[1024] = {0};
+  char buf[FTP_CMD_MAX_SIZE] = {0};
   int ip0 = 0;
   int ip1 = 0;
   int ip2 = 0;
@@ -336,9 +338,9 @@ static ret_t ftp_fs_pasv(ftp_fs_t* ftp_fs) {
 }
 
 static ret_t ftp_fs_cmd_get_size(ftp_fs_t* ftp_fs, const char* filename, int32_t* size) {
-  char cmd[1024] = {0};
+  char cmd[FTP_CMD_MAX_SIZE] = {0};
   ret_t ret = RET_FAIL;
-  char buf[1024] = {0};
+  char buf[FTP_BUF_MAX_SIZE] = {0};
   return_value_if_fail(filename != NULL && size != NULL, RET_BAD_PARAMS);
 
   tk_snprintf(cmd, sizeof(cmd), "SIZE %s\r\n", filename);
@@ -351,9 +353,9 @@ static ret_t ftp_fs_cmd_get_size(ftp_fs_t* ftp_fs, const char* filename, int32_t
 }
 
 static ret_t ftp_fs_cmd_stat(ftp_fs_t* ftp_fs, const char* filename, fs_stat_info_t* fst) {
-  char cmd[1024] = {0};
+  char cmd[FTP_CMD_MAX_SIZE] = {0};
   ret_t ret = RET_FAIL;
-  char buf[1024] = {0};
+  char buf[FTP_BUF_MAX_SIZE] = {0};
   const char* p = NULL;
   tokenizer_t t;
   return_value_if_fail(filename != NULL && fst != NULL, RET_BAD_PARAMS);
@@ -417,9 +419,9 @@ static ret_t ftp_fs_cmd_stat(ftp_fs_t* ftp_fs, const char* filename, fs_stat_inf
 }
 
 static ret_t ftp_fs_cmd_get_pwd(ftp_fs_t* ftp_fs, char* path, uint32_t path_size) {
-  char cmd[1024] = {0};
+  char cmd[FTP_CMD_MAX_SIZE] = {0};
   ret_t ret = RET_FAIL;
-  char buf[1024] = {0};
+  char buf[FTP_BUF_MAX_SIZE] = {0};
   const char* p = NULL;
   const char* pend = NULL;
   return_value_if_fail(path != NULL && path_size > 0, RET_BAD_PARAMS);
@@ -453,8 +455,8 @@ typedef struct _fs_ftp_file_t {
 static ret_t ftp_fs_cmd_download_file(ftp_fs_t* ftp_fs, const char* remote_filename,
                                       const char* local_filename) {
   int ret = 0;
-  char cmd[1024] = {0};
-  char buf[1024] = {0};
+  char cmd[FTP_CMD_MAX_SIZE] = {0};
+  char buf[FTP_BUF_MAX_SIZE] = {0};
   fs_file_t* file = NULL;
   return_value_if_fail(ftp_fs != NULL && remote_filename != NULL && local_filename != NULL,
                        RET_BAD_PARAMS);
@@ -494,8 +496,8 @@ ret_t ftp_fs_download_file(fs_t* fs, const char* remote_filename, const char* lo
 static ret_t ftp_fs_cmd_upload_file(ftp_fs_t* ftp_fs, const char* local_filename,
                                     const char* remote_filename) {
   int ret = 0;
-  char cmd[1024] = {0};
-  char buf[1024] = {0};
+  char cmd[FTP_CMD_MAX_SIZE] = {0};
+  char buf[FTP_BUF_MAX_SIZE] = {0};
   fs_file_t* file = NULL;
   return_value_if_fail(ftp_fs != NULL && remote_filename != NULL && local_filename != NULL,
                        RET_BAD_PARAMS);
@@ -738,7 +740,7 @@ static fs_dir_t* fs_ftp_open_dir(fs_t* fs, const char* name) {
 }
 
 static ret_t fs_ftp_remove_file(fs_t* fs, const char* name) {
-  char cmd[1024] = {0};
+  char cmd[FTP_CMD_MAX_SIZE] = {0};
   ftp_fs_t* ftp_fs = FTP_FS(fs);
   return_value_if_fail(ftp_fs != NULL && name != NULL, RET_BAD_PARAMS);
 
@@ -752,7 +754,7 @@ static bool_t fs_ftp_file_exist(fs_t* fs, const char* name) {
 }
 
 static ret_t fs_ftp_file_rename(fs_t* fs, const char* name, const char* new_name) {
-  char cmd[1024] = {0};
+  char cmd[FTP_CMD_MAX_SIZE] = {0};
   ftp_fs_t* ftp_fs = FTP_FS(fs);
   return_value_if_fail(ftp_fs != NULL && name != NULL && new_name != NULL, RET_BAD_PARAMS);
 
@@ -766,7 +768,7 @@ static ret_t fs_ftp_file_rename(fs_t* fs, const char* name, const char* new_name
 }
 
 static ret_t fs_ftp_remove_dir(fs_t* fs, const char* name) {
-  char cmd[1024] = {0};
+  char cmd[FTP_CMD_MAX_SIZE] = {0};
   ftp_fs_t* ftp_fs = FTP_FS(fs);
   return_value_if_fail(ftp_fs != NULL && name != NULL, RET_BAD_PARAMS);
 
@@ -775,7 +777,7 @@ static ret_t fs_ftp_remove_dir(fs_t* fs, const char* name) {
 }
 
 static ret_t fs_ftp_change_dir(fs_t* fs, const char* name) {
-  char cmd[1024] = {0};
+  char cmd[FTP_CMD_MAX_SIZE] = {0};
   ftp_fs_t* ftp_fs = FTP_FS(fs);
   return_value_if_fail(ftp_fs != NULL && name != NULL, RET_BAD_PARAMS);
 
@@ -784,7 +786,7 @@ static ret_t fs_ftp_change_dir(fs_t* fs, const char* name) {
 }
 
 static ret_t fs_ftp_create_dir(fs_t* fs, const char* name) {
-  char cmd[1024] = {0};
+  char cmd[FTP_CMD_MAX_SIZE] = {0};
   ftp_fs_t* ftp_fs = FTP_FS(fs);
   return_value_if_fail(ftp_fs != NULL && name != NULL, RET_BAD_PARAMS);
 
@@ -878,7 +880,7 @@ static const char* ftp_fs_get_stat_cmd_from_welcome(const char* message) {
 
 fs_t* ftp_fs_create(const char* host, uint32_t port, const char* user, const char* password) {
   ftp_fs_t* ftp_fs = NULL;
-  char buf[1024] = {0};
+  char buf[FTP_BUF_MAX_SIZE] = {0};
   return_value_if_fail(port > 0 && user != NULL && password != NULL, NULL);
   ftp_fs = TKMEM_ZALLOC(ftp_fs_t);
   return_value_if_fail(ftp_fs != NULL, NULL);

@@ -457,9 +457,19 @@ static ret_t ftp_fs_cmd_download_file(ftp_fs_t* ftp_fs, const char* remote_filen
   int ret = 0;
   char cmd[FTP_CMD_MAX_SIZE] = {0};
   char buf[FTP_BUF_MAX_SIZE] = {0};
+  char path[MAX_PATH + 1] = {0};
+
   fs_file_t* file = NULL;
   return_value_if_fail(ftp_fs != NULL && remote_filename != NULL && local_filename != NULL,
                        RET_BAD_PARAMS);
+
+  path_dirname(local_filename, path, sizeof(path)-1);
+  if (!dir_exist(path)) {
+    if (fs_create_dir_r(os_fs(), path) != RET_OK) {
+      log_warn("create %s failed\n", path);
+      return RET_FAIL;
+    }
+  }
 
   goto_error_if_fail(ftp_fs_pasv(ftp_fs) == RET_OK);
   tk_snprintf(cmd, sizeof(cmd), "RETR %s\r\n", remote_filename);
@@ -498,9 +508,19 @@ static ret_t ftp_fs_cmd_upload_file(ftp_fs_t* ftp_fs, const char* local_filename
   int ret = 0;
   char cmd[FTP_CMD_MAX_SIZE] = {0};
   char buf[FTP_BUF_MAX_SIZE] = {0};
+  char path[MAX_PATH + 1] = {0};
+
   fs_file_t* file = NULL;
   return_value_if_fail(ftp_fs != NULL && remote_filename != NULL && local_filename != NULL,
                        RET_BAD_PARAMS);
+
+  path_dirname(remote_filename, path, sizeof(path)-1);
+  if (!fs_dir_exist((fs_t*)ftp_fs, path)) {
+    if (fs_create_dir_r((fs_t*)ftp_fs, path) != RET_OK) {
+      log_warn("create %s failed\n", path);
+      return RET_FAIL;
+    }
+  }
 
   file = fs_open_file(os_fs(), local_filename, "rb");
   return_value_if_fail(file != NULL, RET_FAIL);
